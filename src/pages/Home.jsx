@@ -33,7 +33,7 @@ const Home = () => {
     },
     {
       icon: FiUsers,
-      title: 'Community Voting',
+      title: 'Community Votings',
       description: 'Fair and transparent community-driven competitions',
       color: 'from-purple-500 to-pink-500'
     }
@@ -64,7 +64,7 @@ const Home = () => {
               MediaComp
             </h1>
             <p className="text-xl md:text-2xl text-gray-600 mb-8 leading-relaxed">
-              Compete, Create, and Win with your multimedia content
+              Create, Compete, and Win with your multimedia content
             </p>
           </motion.div>
 
