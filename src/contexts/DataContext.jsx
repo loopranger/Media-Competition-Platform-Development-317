@@ -4,9 +4,12 @@ import {
   createMediaFile, 
   getUserMediaFiles as getSupabaseUserMediaFiles,
   createCompetition as createSupabaseCompetition,
-  getCompetitions as getSupabaseCompetitions 
+  getCompetitions as getSupabaseCompetitions,
+  addVote as addSupabaseVote,
+  hasUserVoted as checkSupabaseVote
 } from '../utils/supabaseService'
 import { useSupabase } from '../hooks/useSupabase'
+import { useAuth } from './AuthContext'
 
 const DataContext = createContext()
 
@@ -24,10 +27,11 @@ export const DataProvider = ({ children }) => {
   const [votes, setVotes] = useState([])
   const [loading, setLoading] = useState(false)
   const { isConfigured } = useSupabase()
+  const { isAuthenticated, profile } = useAuth()
 
   useEffect(() => {
     loadInitialData()
-  }, [isConfigured])
+  }, [isConfigured, isAuthenticated])
 
   const loadInitialData = async () => {
     setLoading(true)
@@ -67,33 +71,33 @@ export const DataProvider = ({ children }) => {
 
   const addCompetition = async (competition) => {
     try {
-      const newCompetition = {
-        ...competition,
-        id: uuidv4(),
-        created_at: new Date().toISOString(),
-        entries: [],
-        status: 'active'
-      }
-
-      if (isConfigured) {
+      if (isConfigured && isAuthenticated) {
         const supabaseCompetition = await createSupabaseCompetition({
-          id: newCompetition.id,
           title: competition.title,
           description: competition.description,
           category: competition.category,
           end_date: competition.endDate || null,
           rules: competition.rules || '',
           prize: competition.prize || '',
-          created_by: competition.createdBy,
-          creator_name: competition.creatorName,
-          status: 'active'
+          creator_name: profile?.name || 'Anonymous'
         })
         
-        const updatedCompetitions = [...competitions, { ...supabaseCompetition, entries: [] }]
+        const updatedCompetitions = [{ ...supabaseCompetition, entries: [] }, ...competitions]
         setCompetitions(updatedCompetitions)
         return supabaseCompetition
       } else {
-        const updatedCompetitions = [...competitions, newCompetition]
+        // Fallback to localStorage
+        const newCompetition = {
+          ...competition,
+          id: uuidv4(),
+          created_at: new Date().toISOString(),
+          entries: [],
+          status: 'active',
+          createdBy: profile?.id || 'anonymous',
+          creatorName: profile?.name || 'Anonymous'
+        }
+        
+        const updatedCompetitions = [newCompetition, ...competitions]
         setCompetitions(updatedCompetitions)
         saveToStorage('competitions', updatedCompetitions)
         return newCompetition
@@ -112,18 +116,17 @@ export const DataProvider = ({ children }) => {
         created_at: new Date().toISOString()
       }
 
-      if (isConfigured) {
+      if (isConfigured && isAuthenticated) {
         await createMediaFile({
-          id: newFile.id,
           name: file.name,
           file_type: file.type,
           file_size: file.size,
           file_url: file.url,
-          user_id: file.userId
+          file_path: file.filePath
         })
       }
 
-      const updatedFiles = [...mediaFiles, newFile]
+      const updatedFiles = [newFile, ...mediaFiles]
       setMediaFiles(updatedFiles)
       saveToStorage('mediaFiles', updatedFiles)
       return newFile
@@ -142,7 +145,7 @@ export const DataProvider = ({ children }) => {
           submittedAt: new Date().toISOString(),
           votes: 0
         }
-        return { ...comp, entries: [...comp.entries, newEntry] }
+        return { ...comp, entries: [...(comp.entries || []), newEntry] }
       }
       return comp
     })
@@ -151,50 +154,74 @@ export const DataProvider = ({ children }) => {
     saveToStorage('competitions', updatedCompetitions)
   }
 
-  const addVote = (competitionId, entryId, userId) => {
-    const voteKey = `${competitionId}-${entryId}-${userId}`
-    
-    // Check if user already voted for this entry
-    if (votes.includes(voteKey)) {
+  const addVote = async (competitionId, entryId, userId) => {
+    try {
+      if (isConfigured && isAuthenticated) {
+        const success = await addSupabaseVote(competitionId, entryId)
+        if (success) {
+          // Reload competitions to get updated vote counts
+          await loadInitialData()
+        }
+        return success
+      } else {
+        // Fallback to localStorage
+        const voteKey = `${competitionId}-${entryId}-${userId}`
+        
+        // Check if user already voted for this entry
+        if (votes.includes(voteKey)) {
+          return false
+        }
+
+        // Add vote
+        const updatedVotes = [...votes, voteKey]
+        setVotes(updatedVotes)
+        saveToStorage('votes', updatedVotes)
+
+        // Update competition entry vote count
+        const updatedCompetitions = competitions.map(comp => {
+          if (comp.id === competitionId) {
+            return {
+              ...comp,
+              entries: comp.entries?.map(entry => {
+                if (entry.id === entryId) {
+                  return { ...entry, votes: (entry.votes || 0) + 1 }
+                }
+                return entry
+              }) || []
+            }
+          }
+          return comp
+        })
+
+        setCompetitions(updatedCompetitions)
+        saveToStorage('competitions', updatedCompetitions)
+        return true
+      }
+    } catch (error) {
+      console.error('Error adding vote:', error)
       return false
     }
-
-    // Add vote
-    const updatedVotes = [...votes, voteKey]
-    setVotes(updatedVotes)
-    saveToStorage('votes', updatedVotes)
-
-    // Update competition entry vote count
-    const updatedCompetitions = competitions.map(comp => {
-      if (comp.id === competitionId) {
-        return {
-          ...comp,
-          entries: comp.entries.map(entry => {
-            if (entry.id === entryId) {
-              return { ...entry, votes: entry.votes + 1 }
-            }
-            return entry
-          })
-        }
-      }
-      return comp
-    })
-
-    setCompetitions(updatedCompetitions)
-    saveToStorage('competitions', updatedCompetitions)
-    return true
   }
 
-  const hasUserVoted = (competitionId, entryId, userId) => {
-    const voteKey = `${competitionId}-${entryId}-${userId}`
-    return votes.includes(voteKey)
+  const hasUserVoted = async (competitionId, entryId, userId) => {
+    try {
+      if (isConfigured && isAuthenticated) {
+        return await checkSupabaseVote(competitionId, entryId, userId)
+      } else {
+        const voteKey = `${competitionId}-${entryId}-${userId}`
+        return votes.includes(voteKey)
+      }
+    } catch (error) {
+      console.error('Error checking vote:', error)
+      return false
+    }
   }
 
   const getUserMediaFiles = async (userId) => {
     if (!userId) return []
     
     try {
-      if (isConfigured) {
+      if (isConfigured && isAuthenticated) {
         return await getSupabaseUserMediaFiles(userId)
       } else {
         return mediaFiles.filter(file => file.userId === userId)

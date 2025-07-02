@@ -1,10 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { 
-  createUserProfile, 
-  updateUserProfile, 
-  getUserProfile 
+  signUp,
+  signIn,
+  signOut,
+  getCurrentUser,
+  getUserProfile,
+  updateUserProfile,
+  createUserProfile,
+  resetPassword
 } from '../utils/supabaseService'
 import { useSupabase } from '../hooks/useSupabase'
+import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext()
 
@@ -18,112 +24,183 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [authLoading, setAuthLoading] = useState(false)
   const { isConfigured } = useSupabase()
 
   useEffect(() => {
-    // Check for existing user session
+    initializeAuth()
+  }, [isConfigured])
+
+  const initializeAuth = async () => {
+    if (isConfigured) {
+      // Listen for auth changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (session?.user) {
+            setUser(session.user)
+            await loadUserProfile(session.user.id)
+          } else {
+            setUser(null)
+            setProfile(null)
+            // Check localStorage fallback
+            loadLocalUser()
+          }
+          setLoading(false)
+        }
+      )
+
+      // Get initial session
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        setUser(session.user)
+        await loadUserProfile(session.user.id)
+      } else {
+        loadLocalUser()
+      }
+
+      return () => subscription?.unsubscribe()
+    } else {
+      // Fallback to localStorage
+      loadLocalUser()
+    }
+    setLoading(false)
+  }
+
+  const loadLocalUser = () => {
     const savedUser = localStorage.getItem('user')
     if (savedUser) {
       const userData = JSON.parse(savedUser)
-      setUser(userData)
-      
-      // Sync with Supabase if configured
-      if (isConfigured) {
-        syncUserWithSupabase(userData.id)
-      }
-    }
-    setLoading(false)
-  }, [isConfigured])
-
-  const syncUserWithSupabase = async (userId) => {
-    try {
-      const supabaseUser = await getUserProfile(userId)
-      if (supabaseUser) {
-        const updatedUser = { ...user, ...supabaseUser }
-        setUser(updatedUser)
-        localStorage.setItem('user', JSON.stringify(updatedUser))
-      }
-    } catch (error) {
-      console.log('User not found in Supabase, will create on next update')
+      setProfile(userData)
     }
   }
 
-  const login = async (userData) => {
+  const loadUserProfile = async (userId) => {
     try {
-      setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
+      const userProfile = await getUserProfile(userId)
+      setProfile(userProfile)
+    } catch (error) {
+      console.error('Error loading user profile:', error)
+    }
+  }
 
-      // Create user profile in Supabase if configured
+  const register = async (email, password, userData) => {
+    setAuthLoading(true)
+    try {
       if (isConfigured) {
-        try {
-          await createUserProfile(userData.id, {
-            name: userData.name,
-            email: userData.email,
-            bio: userData.bio || '',
-            location: userData.location || '',
-            avatar_url: userData.avatar || null
-          })
-        } catch (error) {
-          console.error('Error creating user profile in Supabase:', error)
+        const { user: newUser } = await signUp(email, password, userData)
+        if (newUser) {
+          setUser(newUser)
+          // Profile will be loaded by the auth state change listener
         }
+        return newUser
+      } else {
+        // Fallback to localStorage
+        const newUser = {
+          id: Date.now().toString(),
+          email,
+          ...userData,
+          createdAt: new Date().toISOString()
+        }
+        localStorage.setItem('user', JSON.stringify(newUser))
+        setProfile(newUser)
+        return newUser
       }
     } catch (error) {
-      console.error('Error during login:', error)
+      console.error('Error registering:', error)
       throw error
+    } finally {
+      setAuthLoading(false)
     }
   }
 
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem('user')
-  }
-
-  const updateUser = async (userData) => {
+  const login = async (email, password) => {
+    setAuthLoading(true)
     try {
-      const updatedUser = { ...user, ...userData }
-      setUser(updatedUser)
-      localStorage.setItem('user', JSON.stringify(updatedUser))
-
-      // Update user profile in Supabase if configured
       if (isConfigured) {
-        try {
-          await updateUserProfile(user.id, {
-            name: updatedUser.name,
-            email: updatedUser.email,
-            bio: updatedUser.bio || '',
-            location: updatedUser.location || '',
-            avatar_url: updatedUser.avatar || null
-          })
-        } catch (error) {
-          console.error('Error updating user profile in Supabase:', error)
-          // Try creating if update fails (user might not exist)
-          try {
-            await createUserProfile(user.id, {
-              name: updatedUser.name,
-              email: updatedUser.email,
-              bio: updatedUser.bio || '',
-              location: updatedUser.location || '',
-              avatar_url: updatedUser.avatar || null
-            })
-          } catch (createError) {
-            console.error('Error creating user profile in Supabase:', createError)
-          }
+        const { user: loggedInUser } = await signIn(email, password)
+        if (loggedInUser) {
+          setUser(loggedInUser)
+          // Profile will be loaded by the auth state change listener
         }
+        return loggedInUser
+      } else {
+        throw new Error('Login requires Supabase configuration')
       }
     } catch (error) {
-      console.error('Error updating user:', error)
+      console.error('Error logging in:', error)
+      throw error
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const logout = async () => {
+    setAuthLoading(true)
+    try {
+      if (isConfigured) {
+        await signOut()
+      } else {
+        localStorage.removeItem('user')
+        setProfile(null)
+      }
+      setUser(null)
+      setProfile(null)
+    } catch (error) {
+      console.error('Error logging out:', error)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const updateProfile = async (userData) => {
+    setAuthLoading(true)
+    try {
+      if (isConfigured && user) {
+        const updatedProfile = await updateUserProfile(user.id, userData)
+        setProfile(updatedProfile)
+        return updatedProfile
+      } else if (profile) {
+        // Update localStorage
+        const updatedProfile = { ...profile, ...userData }
+        localStorage.setItem('user', JSON.stringify(updatedProfile))
+        setProfile(updatedProfile)
+        return updatedProfile
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error)
+      throw error
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const sendPasswordReset = async (email) => {
+    if (!isConfigured) {
+      throw new Error('Password reset requires Supabase configuration')
+    }
+
+    try {
+      await resetPassword(email)
+    } catch (error) {
+      console.error('Error sending password reset:', error)
       throw error
     }
   }
 
   const value = {
-    user,
+    user: user || profile, // Use Supabase user if available, otherwise profile
+    profile,
+    loading,
+    authLoading,
+    isAuthenticated: !!(user || profile),
+    isSupabaseAuth: !!user, // True if using Supabase auth
+    register,
     login,
     logout,
-    updateUser,
-    loading,
-    isAuthenticated: !!user
+    updateProfile,
+    sendPasswordReset
   }
 
   return (

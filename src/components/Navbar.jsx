@@ -3,19 +3,28 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import SafeIcon from '../common/SafeIcon';
+import AuthModal from './AuthModal';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiHome, FiUser, FiTrophy, FiImage, FiPlus, FiMenu, FiX, FiLogOut } = FiIcons;
+const { FiHome, FiUser, FiTrophy, FiImage, FiPlus, FiMenu, FiX, FiLogOut, FiLogIn, FiUserPlus } = FiIcons;
 
 const Navbar = () => {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { profile, logout, isAuthenticated, isSupabaseAuth } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState('login');
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
+    setIsMobileMenuOpen(false);
+  };
+
+  const openAuthModal = (tab) => {
+    setAuthModalTab(tab);
+    setAuthModalOpen(true);
     setIsMobileMenuOpen(false);
   };
 
@@ -31,7 +40,7 @@ const Navbar = () => {
   );
 
   return (
-    <nav className="bg-white shadow-lg sticky top-0 z-50">
+    <nav className="bg-white shadow-lg sticky top-0 z-40">
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
@@ -60,7 +69,7 @@ const Navbar = () => {
                 <span className="font-medium">{item.label}</span>
               </Link>
             ))}
-            
+
             {isAuthenticated && (
               <Link
                 to="/create-competition"
@@ -74,12 +83,25 @@ const Navbar = () => {
             {isAuthenticated ? (
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-accent-500 rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">
-                      {user?.name?.charAt(0) || 'U'}
-                    </span>
+                  <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-accent-500 rounded-full flex items-center justify-center overflow-hidden">
+                    {profile?.avatar_url || profile?.avatar ? (
+                      <img
+                        src={profile.avatar_url || profile.avatar}
+                        alt={profile.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-white text-sm font-bold">
+                        {profile?.name?.charAt(0) || 'U'}
+                      </span>
+                    )}
                   </div>
-                  <span className="text-gray-700 font-medium">{user?.name}</span>
+                  <div className="flex flex-col">
+                    <span className="text-gray-700 font-medium text-sm">{profile?.name}</span>
+                    {isSupabaseAuth && (
+                      <span className="text-xs text-green-600">Cloud Sync</span>
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={handleLogout}
@@ -89,12 +111,22 @@ const Navbar = () => {
                 </button>
               </div>
             ) : (
-              <Link
-                to="/create-profile"
-                className="bg-gradient-to-r from-primary-500 to-accent-500 text-white px-4 py-2 rounded-lg hover:from-primary-600 hover:to-accent-600 transition-all duration-200"
-              >
-                Get Started
-              </Link>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => openAuthModal('login')}
+                  className="flex items-center space-x-2 text-primary-600 hover:text-primary-700 font-medium transition-colors"
+                >
+                  <SafeIcon icon={FiLogIn} />
+                  <span>Sign In</span>
+                </button>
+                <button
+                  onClick={() => openAuthModal('register')}
+                  className="bg-gradient-to-r from-primary-500 to-accent-500 text-white px-4 py-2 rounded-lg hover:from-primary-600 hover:to-accent-600 transition-all duration-200 flex items-center space-x-2"
+                >
+                  <SafeIcon icon={FiUserPlus} />
+                  <span>Sign Up</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -103,10 +135,7 @@ const Navbar = () => {
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="md:hidden text-gray-600 hover:text-primary-600"
           >
-            <SafeIcon 
-              icon={isMobileMenuOpen ? FiX : FiMenu} 
-              className="text-2xl" 
-            />
+            <SafeIcon icon={isMobileMenuOpen ? FiX : FiMenu} className="text-2xl" />
           </button>
         </div>
 
@@ -134,7 +163,7 @@ const Navbar = () => {
                   <span className="font-medium">{item.label}</span>
                 </Link>
               ))}
-              
+
               {isAuthenticated && (
                 <Link
                   to="/create-competition"
@@ -150,12 +179,25 @@ const Navbar = () => {
                 <div className="px-4 py-3 border-t border-gray-200 mt-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-accent-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-bold">
-                          {user?.name?.charAt(0) || 'U'}
-                        </span>
+                      <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-accent-500 rounded-full flex items-center justify-center overflow-hidden">
+                        {profile?.avatar_url || profile?.avatar ? (
+                          <img
+                            src={profile.avatar_url || profile.avatar}
+                            alt={profile.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-white text-sm font-bold">
+                            {profile?.name?.charAt(0) || 'U'}
+                          </span>
+                        )}
                       </div>
-                      <span className="text-gray-700 font-medium">{user?.name}</span>
+                      <div className="flex flex-col">
+                        <span className="text-gray-700 font-medium">{profile?.name}</span>
+                        {isSupabaseAuth && (
+                          <span className="text-xs text-green-600">Cloud Sync</span>
+                        )}
+                      </div>
                     </div>
                     <button
                       onClick={handleLogout}
@@ -166,18 +208,34 @@ const Navbar = () => {
                   </div>
                 </div>
               ) : (
-                <Link
-                  to="/create-profile"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="bg-gradient-to-r from-primary-500 to-accent-500 text-white px-4 py-3 rounded-lg mx-2 text-center"
-                >
-                  Get Started
-                </Link>
+                <div className="px-4 py-3 border-t border-gray-200 mt-2 space-y-2">
+                  <button
+                    onClick={() => openAuthModal('login')}
+                    className="w-full flex items-center justify-center space-x-2 text-primary-600 py-2 border border-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
+                  >
+                    <SafeIcon icon={FiLogIn} />
+                    <span>Sign In</span>
+                  </button>
+                  <button
+                    onClick={() => openAuthModal('register')}
+                    className="w-full bg-gradient-to-r from-primary-500 to-accent-500 text-white py-2 rounded-lg hover:from-primary-600 hover:to-accent-600 transition-all duration-200 flex items-center justify-center space-x-2"
+                  >
+                    <SafeIcon icon={FiUserPlus} />
+                    <span>Sign Up</span>
+                  </button>
+                </div>
               )}
             </div>
           </motion.div>
         )}
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        defaultTab={authModalTab}
+      />
     </nav>
   );
 };

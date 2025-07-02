@@ -1,16 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import SafeIcon from '../common/SafeIcon';
+import AuthModal from '../components/AuthModal';
+import SupabaseStatus from '../components/SupabaseStatus';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiTrophy, FiUsers, FiImage, FiVideo, FiMusic, FiArrowRight, FiStar } = FiIcons;
+const { FiTrophy, FiUsers, FiImage, FiVideo, FiMusic, FiArrowRight, FiStar, FiLogIn, FiUserPlus } = FiIcons;
 
 const Home = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, profile } = useAuth();
   const { competitions } = useData();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState('login');
 
   const features = [
     {
@@ -41,8 +45,16 @@ const Home = () => {
 
   const recentCompetitions = competitions.slice(0, 3);
 
+  const openAuthModal = (tab) => {
+    setAuthModalTab(tab);
+    setAuthModalOpen(true);
+  };
+
   return (
     <div className="space-y-16">
+      {/* Supabase Status */}
+      <SupabaseStatus />
+
       {/* Hero Section */}
       <motion.section 
         initial={{ opacity: 0, y: 30 }}
@@ -90,14 +102,43 @@ const Home = () => {
                 </Link>
               </>
             ) : (
-              <Link
-                to="/create-profile"
-                className="bg-gradient-to-r from-primary-500 to-accent-500 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-primary-600 hover:to-accent-600 transition-all duration-300 transform hover:scale-105 shadow-lg"
-              >
-                Get Started
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <motion.button
+                  onClick={() => openAuthModal('login')}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="bg-gradient-to-r from-primary-500 to-accent-500 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-primary-600 hover:to-accent-600 transition-all duration-300 shadow-lg flex items-center space-x-2"
+                >
+                  <SafeIcon icon={FiLogIn} />
+                  <span>Sign In</span>
+                </motion.button>
+                <motion.button
+                  onClick={() => openAuthModal('register')}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="border-2 border-primary-500 text-primary-600 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-primary-50 transition-all duration-300 flex items-center space-x-2"
+                >
+                  <SafeIcon icon={FiUserPlus} />
+                  <span>Sign Up</span>
+                </motion.button>
+              </div>
             )}
           </motion.div>
+
+          {/* Welcome Message for Authenticated Users */}
+          {isAuthenticated && profile && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.6 }}
+              className="mt-8 p-6 bg-gradient-to-r from-primary-50 to-accent-50 rounded-2xl border border-primary-200"
+            >
+              <p className="text-lg text-primary-700">
+                Welcome back, <span className="font-semibold">{profile.name}</span>! 
+                Ready to showcase your creativity?
+              </p>
+            </motion.div>
+          )}
         </div>
       </motion.section>
 
@@ -192,7 +233,7 @@ const Home = () => {
                       <div className="flex items-center space-x-2">
                         <SafeIcon icon={FiUsers} className="text-gray-400" />
                         <span className="text-sm text-gray-600">
-                          {competition.entries.length} entries
+                          {competition.entries?.length || 0} entries
                         </span>
                       </div>
                       <div className="flex items-center space-x-1">
@@ -225,16 +266,36 @@ const Home = () => {
             Join thousands of creators showcasing their talent and competing for recognition
           </p>
           {!isAuthenticated && (
-            <Link
-              to="/create-profile"
-              className="inline-flex items-center space-x-2 bg-white text-primary-600 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-all duration-300 transform hover:scale-105"
-            >
-              <span>Create Your Profile</span>
-              <SafeIcon icon={FiArrowRight} />
-            </Link>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <motion.button
+                onClick={() => openAuthModal('register')}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="inline-flex items-center space-x-2 bg-white text-primary-600 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-all duration-300"
+              >
+                <SafeIcon icon={FiUserPlus} />
+                <span>Create Account</span>
+              </motion.button>
+              <motion.button
+                onClick={() => openAuthModal('login')}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="inline-flex items-center space-x-2 border-2 border-white text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-primary-600 transition-all duration-300"
+              >
+                <SafeIcon icon={FiLogIn} />
+                <span>Sign In</span>
+              </motion.button>
+            </div>
           )}
         </div>
       </motion.section>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        defaultTab={authModalTab}
+      />
     </div>
   );
 };
